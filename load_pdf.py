@@ -10,7 +10,7 @@ load_dotenv(dotenv_path='.config')
 
 class LoadAndSplitDocuments:
     def __init__(self):
-        self.data_path = os.getenv('DATA_PATH', './data')
+        self.data_path = os.getenv('DAT A_PATH', './data')
 
     def run_load_and_split_documents(self):
         document_loader = self.load_documents(data_path = self.data_path)

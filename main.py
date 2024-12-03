@@ -6,49 +6,79 @@ from langchain_community.chat_models import ChatOllama
 from langchain_core.runnables import RunnablePassthrough
 from langchain.retrievers.multi_query import MultiQueryRetriever
 from langchain.schema import HumanMessage
-from retreival_ import Retrieval
 
-
+from rag_prompt import RagPrompt
+from retreival import Retrieval
+import streamlit as st
 
 class InteractiveRAG:
     def __init__(self):
-        # Étape 1 : Charger et traiter les documents une seule fois
-        self.load_data = LoadAndSplitDocuments()
-        self.document_chunks = self.load_data.run_load_and_split_documents()
+        self.rag = RagPrompt(retriever_instance= Retrieval())
 
-        # Étape 2 : Construire la base vectorielle une seule fois
-        self.embeddings_store = EmbeddingsAndVectorStore()
-        self.vector_db = self.embeddings_store.generate_vector_db()
+    def run_dag(self):
+        while True:
+            question = input("Wellcome to AmitaGPT, comment puis-je vous aider ? 😊"
+                             "(ou tapez 'exit' pour quitter ) : ")
 
-        # Étape 3 : Initialiser le modèle et le prompt
-        self.local_model = "mistral"  # Assurez-vous qu'il supporte le français
-        self.llm = ChatOllama(model=self.local_model)
+            if question.lower() == "exit":
+                print("Au revoir 👋!")
+                break
 
-        # Créer le prompt de génération
-        self.rag_prompt = RagPrompt()
+            response = self.rag.run_rag_prompt(question)
+            print(f"Réponse : {response}")
 
-        # Initialiser le Query Prompt
-        self.QUERY_PROMPT = PromptTemplate(
-            input_variables=["question"],
-            template="""Vous êtes un assistant IA conçu pour générer cinq versions différentes de la question utilisateur afin de récupérer des documents pertinents depuis une base de données vectorielle. 
-            Votre objectif est d'aider l'utilisateur à surmonter les limites de la recherche par similarité basée sur la distance en fournissant plusieurs perspectives de la question.
-            Question initiale : {question}
-            Fournissez cinq reformulations de cette question, séparées par des sauts de ligne.
-            """
-        )
+    def main(self):
+        st.title("AMITA GPT")
 
-        # Configurer le MultiQueryRetriever
-        self.retriever = MultiQueryRetriever.from_llm(
-            retriever=self.vector_db.as_retriever(),
-            llm=self.llm,
-            prompt=self.QUERY_PROMPT,
-        )
+        # Initialize session state for chat history
+        if "chat_history" not in st.session_state:
+            st.session_state.chat_history = []
 
-    def ask_question(self, question: str):
-        # Étape 4 : Récupérer les documents pertinents pour la question
-        relevant_context = self.retriever.get_relevant_documents(question)
+        # Input field for user question
+        question = st.text_input("Salut! Comment puis-je t'aider ? 😊", "")
 
-        # Étape 5 : Générer une réponse avec le modèle LLM
-        response = self.rag_prompt.run_rag_prompt(retriever=self.retriever, question=question)
+        # When the "Réponse" button is clicked
+        if st.button("Réponse"):
+            if question.strip():
+                # Add user's question to chat history
+                st.session_state.chat_history.append({"role": "user", "message": question})
 
-        return response
+                # Generate answer using the RAG system
+                answer = self.rag.run_rag_prompt(question=question)
+
+                # Add assistant's answer to chat history
+                st.session_state.chat_history.append({"role": "assistant", "message": answer})
+
+        # Display chat history
+        st.write("### Conversation :")
+        for chat in st.session_state.chat_history:
+            if chat["role"] == "user":
+                st.markdown(f"**Vous** : {chat['message']}")
+            else:
+                st.markdown(f"**AmitaGPT** : {chat['message']}")
+
+    # def main(self):
+    #     st.title("AMITA GPT")
+    #
+    #     # Initialize session state for chat history
+    #     if "chat_history" not in st.session_state:
+    #         st.session_state.chat_history = []
+    #
+    #     while True:
+    #         question = st.text_input("Salut! Comment puis-je t'aider ? 😊", "")
+    #
+    #         if st.button("Réponse"):
+    #             answer = self.rag.run_rag_prompt(question=question)
+    #             st.write({answer})
+    #
+    #     # Display chat history
+    #     st.write("### Historique de la conversation :")
+    #     for chat in st.session_state.chat_history:
+    #         st.markdown(f"**Vous** : {chat['question']}")
+    #         st.markdown(f"**AmitaGPT** : {chat['response']}")
+
+
+
+if __name__ == "__main__":
+    rag = InteractiveRAG()
+    rag.run_dag()

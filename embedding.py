@@ -1,8 +1,9 @@
 from langchain_community.embeddings.bedrock import BedrockEmbeddings
-from langchain_community.vectorstores import Chroma
+from langchain_community.vectorstores import Chroma, FAISS
 from langchain_openai import OpenAIEmbeddings
 from langchain_community.embeddings import OllamaEmbeddings
 import ollama
+import chromadb
 
 from load_pdf import LoadAndSplitDocuments
 
@@ -21,9 +22,20 @@ class EmbeddingsAndVectorStore :
         vector_db = Chroma.from_documents(
             documents=self.document_chunks,
             embedding=self.get_embedding_function(),
-            collection_name='rag'
+            collection_name='rag',
+            persist_directory="./chroma_db"
         )
+        vector_db.persist()
+        print(f"Saved {len(self.document_chunks)} chunks to './chroma_db'")
+
+        # # using persist storage
+        # vector_db = Chroma(
+        #     persist_directory="./chroma_db",
+        #     embedding_function=self.get_embedding_function(),
+        #     collection_name='rag')
+
         return vector_db
+
 
 
     def get_embedding_function(self):
@@ -34,32 +46,33 @@ class EmbeddingsAndVectorStore :
         return embeddings
 
 
-# def __get_embedding_function():
-#     embeddings = BedrockEmbeddings(
-#         #credentials_profile_name="default",
-#         region_name="us-east-1"
-#     )
-#     return embeddings
-#
-# def get_embedding_function_openai():
-#     embeddings_openai = OpenAIEmbeddings(
-#         model="text-embedding-ada-002",
-#         openai_api_key = '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'
-#     )
-#     return embeddings_openai
 
-# def get_embedding_function_ollama(model, chunks):
-#     return [ollama.embeddings(model= model, prompt=chunk)["embedding"] for chunk in chunks]
+    # BedrockEmbeddings
+    # def __get_embedding_function():
+    #     embeddings = BedrockEmbeddings(
+    #         #credentials_profile_name="default",
+    #         region_name="us-east-1"
+    #     )
+    #     return embeddings
+    #
+    # OpenAIEmbeddings
+    # def get_embedding_function_openai():
+    #     embeddings_openai = OpenAIEmbeddings(
+    #         model="text-embedding-ada-002",
+    #         openai_api_key = ''
+    #     )
+    #     return embeddings_openai
 
-# def get_embedding_function():
-#     embeddings = OllamaEmbeddings(
-#         model = 'nomic-embed-text',
-#         show_progress= True
-#     )
-#     return embeddings
+    # ollama
+    # def get_embedding_function_ollama(model, chunks):
+    #     return [ollama.embeddings(model= model, prompt=chunk)["embedding"] for chunk in chunks]
+
+
 
 if __name__ == '__main__':
     emb = EmbeddingsAndVectorStore()
+    # single_vector = emb.get_embedding_function().embed_query(emb.document_chunks[0].page_content)
+    # print(single_vector)
     print(emb.run_embeddings_and_store_vectors())
 
     # load = load_documents()
