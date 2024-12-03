@@ -57,28 +57,8 @@ class InteractiveRAG:
             else:
                 st.markdown(f"**AmitaGPT** : {chat['message']}")
 
-    # def main(self):
-    #     st.title("AMITA GPT")
-    #
-    #     # Initialize session state for chat history
-    #     if "chat_history" not in st.session_state:
-    #         st.session_state.chat_history = []
-    #
-    #     while True:
-    #         question = st.text_input("Salut! Comment puis-je t'aider ? 😊", "")
-    #
-    #         if st.button("Réponse"):
-    #             answer = self.rag.run_rag_prompt(question=question)
-    #             st.write({answer})
-    #
-    #     # Display chat history
-    #     st.write("### Historique de la conversation :")
-    #     for chat in st.session_state.chat_history:
-    #         st.markdown(f"**Vous** : {chat['question']}")
-    #         st.markdown(f"**AmitaGPT** : {chat['response']}")
-
 
 
 if __name__ == "__main__":
     rag = InteractiveRAG()
-    rag.run_dag()
+    rag.main()
