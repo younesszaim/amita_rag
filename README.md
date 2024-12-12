@@ -5,7 +5,7 @@ AmitaGPT est une application intelligente de recherche et de réponse documentai
 L'application permet aux utilisateurs d'interagir avec une base de documents vectorielle et d'obtenir des réponses contextuellement pertinentes 
 avec  une journalisation pour suivre les performances et déboguer les problèmes.
 
-### Démonstration
+## Démonstration
 
 https://github.com/user-attachments/assets/2d3a62b0-11cc-429c-964b-e889092a031b
 
