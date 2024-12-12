@@ -5,6 +5,9 @@ AmitaGPT est une application intelligente de recherche et de réponse documentai
 L'application permet aux utilisateurs d'interagir avec une base de documents vectorielle et d'obtenir des réponses contextuellement pertinentes 
 avec  une journalisation pour suivre les performances et déboguer les problèmes.
 
+### Démonstration
+![amitaGPT POC.mov](demo/amitaGPT%20POC.mov)
+
 ## Features
 - 🇫🇷 Support natif en français
 - 🔍 Recherche documentaire avancée avec MultiQueryRetriever
