@@ -6,7 +6,10 @@ L'application permet aux utilisateurs d'interagir avec une base de documents vec
 avec  une journalisation pour suivre les performances et déboguer les problèmes.
 
 ### Démonstration
-![amitaGPT POC.mov](demo/amitaGPT%20POC.mov)
+
+https://github.com/user-attachments/assets/2d3a62b0-11cc-429c-964b-e889092a031b
+
+
 
 ## Features
 - 🇫🇷 Support natif en français
