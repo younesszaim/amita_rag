@@ -7,7 +7,8 @@ from langchain_core.runnables import RunnablePassthrough
 from langchain.retrievers.multi_query import MultiQueryRetriever
 from langchain.schema import HumanMessage
 from retreival import Retrieval
-
+import logging
+import time
 
 class RagPrompt :
     def __init__(self, retriever_instance : Retrieval):
@@ -15,23 +16,45 @@ class RagPrompt :
         Question : {question}
         """
         # self.retriever_instance = Retrieval()
-        self.retriever_instance = retriever_instance
-        self.llm = self.retriever_instance.llm
-        self.context = self.retriever_instance.run_retrieval()
+        # self.retriever_instance = retriever_instance
+        self.llm = retriever_instance.llm
+        self.context = retriever_instance.run_retrieval()
 
     def run_rag_prompt(self, question : str):
+        start_time = time.time()
+        logging.info('Run run_rag_prompt')
+        logging.info('1. prompt')
         prompt = ChatPromptTemplate.from_template(self.template)
+        retrieved_docs = self.context.get_relevant_documents(question)
+        # Collect context and sources
+        # context = " ".join([doc.page_content for doc in retrieved_docs])
+        sources = [doc.metadata.get("source", "Unknown") for doc in retrieved_docs]
+        sources = set(sources)
+        sources = list(sources)[:2]
+
+        end_time = time.time()
+        logging.info(f'1. prompt done {end_time - start_time}')
         # print(prompt)
         # print(prompt.invoke({"context": retriever.run_retrieval(), "question": RunnablePassthrough()}))
+        logging.info('2. chain')
         chain = (
                 {"context": self.context, "question": RunnablePassthrough()}
                 | prompt
                 | self.llm
                 | StrOutputParser()
         )
+        end_time = time.time()
+        logging.info(f'2. chain done {end_time - start_time}')
         # print({"context": self.retriever_instance, "question": question})
         # return chain.invoke({"context": self.retriever_instance, "question": question})
-        return chain.invoke(question)
+        logging.info('3. result')
+        result = chain.invoke(question)
+        end_time = time.time()
+        logging.info(f'3. result done {end_time - start_time}')
+
+        end_time = time.time()
+        logging.info(f'run_rag_prompt done {end_time - start_time}')
+        return {"response": result, "resources": sources} #result
 
 
 

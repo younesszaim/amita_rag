@@ -4,17 +4,24 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain.schema.document import Document
 from dotenv import load_dotenv, find_dotenv
 import os
+import logging
+import time
+logging.basicConfig(level=logging.INFO)
 
 # load environment variables from .conf file
 load_dotenv(dotenv_path='.config')
 
 class LoadAndSplitDocuments:
     def __init__(self):
-        self.data_path = os.getenv('DAT A_PATH', './data')
+        self.data_path = os.getenv('DATA_PATH', './data')
 
     def run_load_and_split_documents(self):
+        start_time = time.time()
+        logging.info('Run run_load_and_split_documents')
         document_loader = self.load_documents(data_path = self.data_path)
         document_chunks = self.split_documents(documents = document_loader)
+        end_time = time.time()
+        logging.info(f'run_load_and_split_documents done {end_time - start_time}')
         return document_chunks
 
     @staticmethod
