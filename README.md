@@ -12,7 +12,7 @@ avec  une journalisation pour suivre les performances et déboguer les problème
 - 📄 Base de données vectorielle pour une recherche documentaire efficace
 - 🚀 Génération de réponses en temps réel
 
-## Prérequis
+## Prérequis 
 
 - Python 3.8+
 - Clé API OpenAI
