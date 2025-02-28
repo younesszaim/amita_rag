@@ -65,7 +65,7 @@ if __name__ == '__main__':
     # print(answer)
 
     while True:
-        question = input("Wellcome to AmitaGPT, comment puis-je vous aider ? 😊 "
+        question = input("Welcome to AmitaGPT, comment puis-je vous aider ? 😊 "
                          "(ou tapez 'exit' pour quitter ) : ")
 
         if question.lower() == "exit":

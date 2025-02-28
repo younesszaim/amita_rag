@@ -7,9 +7,14 @@ from dotenv import load_dotenv
 from langchain.prompts import ChatPromptTemplate, PromptTemplate
 from langchain.retrievers.multi_query import MultiQueryRetriever
 from langchain_community.vectorstores import FAISS
+from langchain_chroma import Chroma
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+import hashlib
+from datetime import datetime
+
+from load_pdf import LoadAndSplitDocuments
 
 load_dotenv(dotenv_path='.config')
 
@@ -18,6 +23,7 @@ class InteractiveRAG:
     def __init__(self):
         os.environ["OPENAI_API_KEY"] = os.getenv('OPENAI_API_KEY', '')
         self.embedding_function = self.get_embedding_function()
+        #self.update_vector_store_from_sharepoint()
         self._load_or_create_vector_db()
         self.llm = ChatOpenAI(
             model="gpt-3.5-turbo",
@@ -52,15 +58,15 @@ class InteractiveRAG:
         )  #
 
     def _load_or_create_vector_db(self):
-        vector_db_path = "./faiss_index"
+        #vector_db_path = "./faiss_index"
+        vector_db_path = "./chroma_index"
 
         if os.path.exists(vector_db_path):
             # Load existing vector store
-            self.db = FAISS.load_local(vector_db_path, self.embedding_function, allow_dangerous_deserialization=True)
+            self.db = Chroma(persist_directory=vector_db_path, embedding_function=self.embedding_function)
+            #self.db = FAISS.load_local(vector_db_path, self.embedding_function, allow_dangerous_deserialization=True)
         else:
             # Create and save vector store
-            from load_pdf_copy import LoadAndSplitDocuments
-
             load_data = LoadAndSplitDocuments()
             document_chunks = load_data.run_load_and_split_documents()
 
@@ -68,13 +74,91 @@ class InteractiveRAG:
             for doc in document_chunks:
                 if "source" not in doc.metadata:
                     doc.metadata["source"] = "SharePoint"
+                if "last_modified" not in doc.metadata:
+                    doc.metadata["last_modified"] = datetime.now().isoformat().strftime("%Y-%m-%d %H:%M:%S")
+                doc.metadata["hash"] = hashlib.md5(doc.page_content.encode('utf-8')).hexdigest()
 
-            # Create vector store
-            self.db = FAISS.from_documents(document_chunks,
-                                           self.embedding_function)
+            # # Create vector store
+            # self.db = FAISS.from_documents(document_chunks,
+            #                                self.embedding_function)
 
-            # Persist vector store
-            self.db.save_local(vector_db_path)
+            # # Persist vector store
+            # self.db.save_local(vector_db_path)
+     
+            self.db = Chroma.from_documents(
+            documents=document_chunks,
+            embedding=self.embedding_function,
+            persist_directory=vector_db_path
+            )
+
+    def update_vector_store_from_sharepoint(self): 
+
+        directory = "./chroma_index"
+        load_data = LoadAndSplitDocuments()
+        document_chunks = load_data.run_load_and_split_documents()
+
+        # Ajout métadonnées manquantes
+        for doc in document_chunks:
+            if "source" not in doc.metadata:
+                doc.metadata["source"] = "SharePoint"
+            if "last_modified" not in doc.metadata:
+                doc.metadata["last_modified"] = datetime.now().isoformat().strftime("%Y-%m-%d %H:%M:%S")
+            doc.metadata["hash"] = hashlib.md5(doc.page_content.encode('utf-8')).hexdigest()
+
+        if os.path.exists(directory) and len(os.listdir(directory)) > 0:
+            logging.info("Chargement du vector store existant")
+            self.db = Chroma(persist_directory=directory, embedding_function=self.embedding_function)
+            # Récupérer les documents existants avec leurs métadonnées
+            existing_docs = self.db._collection.get(include=["metadatas", "documents"])
+            existing_docs_metadata = {
+                meta["source"]: {"last_modified": meta["last_modified"], "hash": meta.get("hash", "")}
+                for meta in existing_docs["metadatas"]
+            }
+            documents_to_add = []
+            documents_to_update = []
+            documents_to_remove = []
+
+            #Documents à ajouter ou mettre à jour (date différente)
+            for doc in document_chunks:
+                source = doc.metadata["source"]            
+                hash_value = doc.metadata["hash"]
+                last_modified = doc.metadata["last_modified"]
+                if source not in existing_docs_metadata:
+                    documents_to_add.append(doc)
+                elif existing_docs_metadata[source]["last_modified"] != last_modified:
+                    documents_to_update.append(doc)
+
+            # Documents à supprimer
+            existing_sources = {meta["source"] for meta in existing_docs["metadatas"]}
+            new_sources = {doc.metadata["source"] for doc in document_chunks}
+            documents_to_remove = list(existing_sources - new_sources)
+
+            # Mettre à jour le vector store
+            logging.info(f"Ajout : {len(documents_to_add)}, Mise à jour : {len(documents_to_update)}, Suppression : {len(documents_to_remove)}")
+
+            if documents_to_add or documents_to_update or documents_to_remove:
+
+                # Suppression des documents obsolètes
+                if documents_to_remove:
+                    self.db._collection.delete(where={"source":{"$in":documents_to_remove}})
+                    logging.info("Suppression")
+                # Suppression ancienne version
+                if documents_to_update:
+                    self.db._collection.delete(where={"source": {"$in": [doc.metadata["source"] for doc in documents_to_update]}})
+
+                # Ajout des nouveaux documents
+                self.db.add_documents(documents_to_add + documents_to_update)
+                logging.info("Ajout et mise à jour")
+        else:
+            logging.info("Création d'un nouveau vector store")
+            # Créer un nouveau vector store
+            self.db = Chroma.from_documents(
+            documents=document_chunks,
+            embedding=self.embedding_function,
+            persist_directory=directory
+            )
+        #db.persist()
+        logging.info(" Vector store enregistré localement avec succès !")
 
     def get_embedding_function(self):
         start_time = time.time()
@@ -90,6 +174,7 @@ class InteractiveRAG:
         logging.info('1. prompt')
 
         history_text = "\n".join([f"Utilisateur: {msg['message']}" if msg['role'] == "user" else f"Assistant: {msg['message']}" for msg in chat_history[-3:]])
+        logging.info(f"History : {history_text}")
         full_question = f"Contexte de la conversation :\n{history_text}\n\nNouvelle question : {question}\n\nFournissez une réponse détaillée et complète."
         prompt = ChatPromptTemplate.from_template(self.template)
         retrieved_docs = self.retriever.get_relevant_documents(full_question)
@@ -115,7 +200,7 @@ class InteractiveRAG:
         logging.info(f'run_rag_prompt done {time.time() - start_time}')
         return {"response": result, "resources": sources}
 
-    def run_dag(self):
+    def run_rag(self):
         while True:
             question = input("Welcome to AmitaGPT, comment puis-je vous aider ? 😊"
                              "(ou tapez 'exit' pour quitter ) : ")
