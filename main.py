@@ -48,9 +48,13 @@ class InteractiveRAG:
         #           tout en préservant l’intention initiale de la demande. Fournissez une réponse détaillée et complète.
         #           Question initiale : {question}
         #           """
-        self.template = """Répondez à la question en t'appuyant sur le contexte suivant : {context}
-                Question : {question}
-                """
+        self.template_context_only = """Répondez à la question en vous appuyant uniquement sur le contexte suivant : {context}
+            Question : {question}
+            """
+        
+        self.template_mixed = """Répondez à la question en utilisant vos connaissances ainsi que le contexte suivant : {context}
+            Question : {question}
+            """
         self.retriever = MultiQueryRetriever.from_llm(
             self.db.as_retriever(search_kwargs={"k": 10}),
             self.llm,
@@ -168,7 +172,7 @@ class InteractiveRAG:
         logging.info(f'get_embedding_function done in {end_time - start_time}')
         return embeddings
 
-    def run_rag_prompt(self, question: str,chat_history=None):
+    def run_rag_prompt(self, question: str,chat_history=None,use_model_knowledge=False):
         start_time = time.time()
         logging.info('Run run_rag_prompt')
         logging.info('1. prompt')
@@ -176,7 +180,8 @@ class InteractiveRAG:
         history_text = "\n".join([f"Utilisateur: {msg['message']}" if msg['role'] == "user" else f"Assistant: {msg['message']}" for msg in chat_history[-3:]])
         logging.info(f"History : {history_text}")
         full_question = f"Contexte de la conversation :\n{history_text}\n\nNouvelle question : {question}\n\nFournissez une réponse détaillée et complète."
-        prompt = ChatPromptTemplate.from_template(self.template)
+        template = self.template_mixed if use_model_knowledge else self.template_context_only
+        prompt = ChatPromptTemplate.from_template(template)
         retrieved_docs = self.retriever.get_relevant_documents(full_question)
         sources = [doc.metadata.get("source", "Unknown") for doc in retrieved_docs]
         sources = set(sources)
@@ -215,20 +220,46 @@ class InteractiveRAG:
     def main(self):
         # Display the logo at the top
         st.image("./image/img.png", width=200)
-        # Initialize session state for chat history
+        # Initialize session state
         if "chat_history" not in st.session_state:
             st.session_state.chat_history = []
 
-        # Input field for user question
-        question = st.text_input("Welcome to AmitaGPT! Comment puis-je t'aider ? 😊", "")
+        if "query_submitted" not in st.session_state:
+            st.session_state.query_submitted = False
 
+        if "question" not in st.session_state:
+            st.session_state.question = ""
+
+        col1, col2 = st.columns([3, 1])
+    
+        with col1:
+            if st.button("Nouvelle conversation"):
+                st.session_state.chat_history = []
+                st.session_state.query_submitted = False
+                st.rerun() 
+
+        with col2:
+            if st.button("Mettre à jour le vector store"):
+                with st.spinner("Mise à jour en cours..."):
+                    self.update_vector_store_from_sharepoint()
+                st.success("Vector store mis à jour avec succès !")
+
+        
+
+        # Input field for user question
+        question = st.text_input("Welcome to AmitaGPT! Comment puis-je t'aider ? 😊", st.session_state.question)
+
+        use_model_knowledge = st.toggle("Utiliser les connaissances du modèle (LLM + Vector Store)", value=False)
+        
+        
         # When the "Réponse" button is clicked
         if st.button("Réponse"):
-            pass
-            if question.strip():
-                # Add user's question to chat history
-                st.session_state.chat_history.append({"role": "user", "message": question})
+            st.session_state.query_submitted = True 
 
+
+        if question.strip():
+            if st.session_state.query_submitted or question != "":
+                st.session_state.chat_history.append({"role": "user", "message": question})
                 # Display a progress bar
                 with st.spinner('Génération de la réponse...'):
                     progress_bar = st.progress(0)
@@ -239,13 +270,14 @@ class InteractiveRAG:
                         progress_bar.progress((i + 1) * 10)
 
                     # Generate answer using the RAG system
-                    result = self.run_rag_prompt(question=question,chat_history=st.session_state.chat_history)
+                    result = self.run_rag_prompt(question=question,chat_history=st.session_state.chat_history,use_model_knowledge=use_model_knowledge)
                     answer = result["response"]
                     resources = result["resources"]
 
                     # Add assistant's answer to chat history
                     st.session_state.chat_history.append(
                         {"role": "assistant", "message": answer, "resources": resources})
+                st.session_state.query_submitted = False
 
         # Display chat history in reverse order (latest first)
         st.write("### Conversation :")
