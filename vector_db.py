@@ -4,7 +4,7 @@ from langchain_core.documents import Document
 from embedding import get_embedding_function
 from langchain.vectorstores.chroma import Chroma
 
-from load_pdf import load_documents
+from _old_load_pdf_2 import load_documents
 from split_documents import split_documents
 
 

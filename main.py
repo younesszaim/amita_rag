@@ -11,43 +11,58 @@ from langchain_chroma import Chroma
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-import hashlib
+from langchain_mistralai import ChatMistralAI,MistralAIEmbeddings
+from langchain_core.messages import AIMessage, HumanMessage
+from langchain.retrievers import MultiQueryRetriever 
+from langchain.chains import ConversationalRetrievalChain,create_history_aware_retriever
+from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder, HumanMessagePromptTemplate
+from langchain.chains.combine_documents import create_stuff_documents_chain
+#import hashlib
 from datetime import datetime
 
 from load_pdf import LoadAndSplitDocuments
+
+from langchain.memory import ConversationBufferMemory
+
+
 
 load_dotenv(dotenv_path='.config')
 
 
 class InteractiveRAG:
     def __init__(self):
-        os.environ["OPENAI_API_KEY"] = os.getenv('OPENAI_API_KEY', '')
+        #os.environ["OPENAI_API_KEY"] = os.getenv('OPENAI_API_KEY', '')
+        os.environ["MISTRAL_API_KEY"] = os.getenv('MISTRAL_API_KEY', '')
         self.embedding_function = self.get_embedding_function()
-        #self.update_vector_store_from_sharepoint()
         self._load_or_create_vector_db()
-        self.llm = ChatOpenAI(
-            model="gpt-3.5-turbo",
+        # self.llm = ChatOpenAI(
+        #     model="gpt-4o-mini",
+        # #     model="gpt-3.5-turbo",
+        #     temperature=0.7,
+        #     max_tokens=None,
+        # )
+        self.llm = ChatMistralAI(
+            model="mistral-small-latest",
             temperature=0.7,
-            max_tokens=None
+            max_tokens=None,
+            #random_seed=1
         )
-        self.QUERY_PROMPT = PromptTemplate(
+        
+        self.history_prompt = ChatPromptTemplate.from_messages([
+            MessagesPlaceholder(variable_name="chat_history"),
+            HumanMessagePromptTemplate.from_template("{input}")  
+        ])
+    
+        self.query_prompt = PromptTemplate(
             input_variables=["question"],
             template="""
-                   Vous êtes un agent conversationnel pour les collaborateurs d'Amita Conseil. 
-                   Votre rôle est de les accompagner dans leur recherche d’informations en fournissant 
-                   des réponses pertinentes et précises. Un contexte te sera fourni pour orienter ta réponse aux requêtes de l'utilisateur. 
-                   Fournissez une réponse détaillée, complète et structurée. 
-                   """
+                Vous êtes un agent conversationnel pour les collaborateurs. 
+                Reformulez cette question de deux manières différentes pour maximiser la récupération d'informations pertinentes.
+                
+                Question : {question}
+            """
         )
-        #"""
-        #           Vous êtes un assistant intelligent francophone représentant Amita Conseil. 
-        #           Votre rôle est d’accompagner les collaborateurs dans leur recherche d’informations en fournissant 
-        #           des réponses pertinentes et précises.
-        #           Votre mission consiste à reformuler une seule fois la question posée par l’utilisateur afin d’optimiser 
-        #           la récupération de documents pertinents à partir d’une base de données vectorielle, 
-        #           tout en préservant l’intention initiale de la demande. Fournissez une réponse détaillée et complète.
-        #           Question initiale : {question}
-        #           """
+
         self.template_context_only = """Répondez à la question en vous appuyant uniquement sur le contexte suivant : {context}
             Question : {question}
             """
@@ -55,15 +70,21 @@ class InteractiveRAG:
         self.template_mixed = """Répondez à la question en utilisant vos connaissances ainsi que le contexte suivant : {context}
             Question : {question}
             """
-        self.retriever = MultiQueryRetriever.from_llm(
+        multi_query_retriever = MultiQueryRetriever.from_llm(
             self.db.as_retriever(search_kwargs={"k": 10}),
             self.llm,
-            prompt=self.QUERY_PROMPT
-        )  #
+            prompt=self.query_prompt
+        )  
+        self.retriever = create_history_aware_retriever(
+            llm=self.llm,
+            retriever=multi_query_retriever,
+            prompt=self.history_prompt
+        )
 
     def _load_or_create_vector_db(self):
         #vector_db_path = "./faiss_index"
-        vector_db_path = "./chroma_index"
+        #vector_db_path = "./chroma_index_openai"
+        vector_db_path = "./chroma_index_mistral"
 
         if os.path.exists(vector_db_path):
             # Load existing vector store
@@ -80,8 +101,8 @@ class InteractiveRAG:
                     doc.metadata["source"] = "SharePoint"
                 if "last_modified" not in doc.metadata:
                     doc.metadata["last_modified"] = datetime.now().isoformat().strftime("%Y-%m-%d %H:%M:%S")
-                doc.metadata["hash"] = hashlib.md5(doc.page_content.encode('utf-8')).hexdigest()
-
+                #doc.metadata["hash"] = hashlib.md5(doc.page_content.encode('utf-8')).hexdigest()
+                
             # # Create vector store
             # self.db = FAISS.from_documents(document_chunks,
             #                                self.embedding_function)
@@ -97,7 +118,8 @@ class InteractiveRAG:
 
     def update_vector_store_from_sharepoint(self): 
 
-        directory = "./chroma_index"
+        directory = "./chroma_index_openai"
+        #directory = "./chroma_index_mistral"
         load_data = LoadAndSplitDocuments()
         document_chunks = load_data.run_load_and_split_documents()
 
@@ -107,7 +129,7 @@ class InteractiveRAG:
                 doc.metadata["source"] = "SharePoint"
             if "last_modified" not in doc.metadata:
                 doc.metadata["last_modified"] = datetime.now().isoformat().strftime("%Y-%m-%d %H:%M:%S")
-            doc.metadata["hash"] = hashlib.md5(doc.page_content.encode('utf-8')).hexdigest()
+            #doc.metadata["hash"] = hashlib.md5(doc.page_content.encode('utf-8')).hexdigest()
 
         if os.path.exists(directory) and len(os.listdir(directory)) > 0:
             logging.info("Chargement du vector store existant")
@@ -167,7 +189,8 @@ class InteractiveRAG:
     def get_embedding_function(self):
         start_time = time.time()
         logging.info('get_embedding_function')
-        embeddings = OpenAIEmbeddings(model="text-embedding-ada-002")
+        #embeddings = OpenAIEmbeddings(model="text-embedding-ada-002")
+        embeddings = MistralAIEmbeddings(model="mistral-embed")
         end_time = time.time()
         logging.info(f'get_embedding_function done in {end_time - start_time}')
         return embeddings
@@ -177,45 +200,54 @@ class InteractiveRAG:
         logging.info('Run run_rag_prompt')
         logging.info('1. prompt')
 
-        history_text = "\n".join([f"Utilisateur: {msg['message']}" if msg['role'] == "user" else f"Assistant: {msg['message']}" for msg in chat_history[-3:]])
-        logging.info(f"History : {history_text}")
-        full_question = f"Contexte de la conversation :\n{history_text}\n\nNouvelle question : {question}\n\nFournissez une réponse détaillée et complète."
+        chat_history_messages = [
+            HumanMessage(content=msg["content"]) if msg["role"] == "user" else AIMessage(content=msg["content"])
+            for msg in chat_history[-3:]
+        ] if chat_history else []
+
+        #  Récupération des documents pertinents
+        retrieved_docs=self.retriever.invoke({
+            "input": question,
+            "chat_history": chat_history_messages
+        })
+
+        #  Création du prompt selon le mode
         template = self.template_mixed if use_model_knowledge else self.template_context_only
         prompt = ChatPromptTemplate.from_template(template)
-        retrieved_docs = self.retriever.get_relevant_documents(full_question)
-        sources = [doc.metadata.get("source", "Unknown") for doc in retrieved_docs]
-        sources = set(sources)
-        sources = list(sources)[:2]
+        #context_text = "\n\n".join([doc.page_content for doc in retrieved_docs])
+        question_answer_chain = create_stuff_documents_chain(self.llm, prompt)
+        # web_doc = Document(
+        # page_content="", # contenu de la page web
+        # metadata={"source": "web"}
+        # )
 
+        result = question_answer_chain.invoke({
+                "context": retrieved_docs, #+ [web_doc],
+                "question": question,
+        })
+    
+        # sources = list(set([doc.metadata.get("source", "Unknown") for doc in retrieved_docs]))[:2]
 
-        logging.info(f'1. prompt done {time.time() - start_time}')
-        logging.info('2. chain')
-        chain = (
-                {"context": self.retriever, "question": RunnablePassthrough()}
-                | prompt
-                | self.llm
-                | StrOutputParser()
-        )
+        # logging.info(f'1. prompt done {time.time() - start_time}')
+        # logging.info('2. chain')
+        # chain = (
+        #     prompt
+        #     | self.llm
+        #     | StrOutputParser()
+        # )
 
-        logging.info(f'2. chain done {time.time() - start_time}')
-        logging.info('3. result')
-        result = chain.invoke(question)
+        # logging.info(f'2. chain done {time.time() - start_time}')
+        # logging.info('3. result')
+        # result = chain.invoke({
+        #     "context": context_text,
+        #     "question": question
+        #})
+
+        sources = list(set([doc.metadata.get("source", "Unknown") for doc in retrieved_docs]))[:2]
   
         logging.info(f'3. result done {time.time() - start_time}')
         logging.info(f'run_rag_prompt done {time.time() - start_time}')
         return {"response": result, "resources": sources}
-
-    def run_rag(self):
-        while True:
-            question = input("Welcome to AmitaGPT, comment puis-je vous aider ? 😊"
-                             "(ou tapez 'exit' pour quitter ) : ")
-
-            if question.lower() == "exit":
-                print("Au revoir 👋!")
-                break
-
-            response = self.run_rag_prompt(question)
-            print(f"Réponse : {response}")
 
     def main(self):
         # Display the logo at the top
@@ -224,73 +256,137 @@ class InteractiveRAG:
         if "chat_history" not in st.session_state:
             st.session_state.chat_history = []
 
-        if "query_submitted" not in st.session_state:
-            st.session_state.query_submitted = False
 
         if "question" not in st.session_state:
             st.session_state.question = ""
 
-        col1, col2 = st.columns([3, 1])
-    
-        with col1:
-            if st.button("Nouvelle conversation"):
-                st.session_state.chat_history = []
-                st.session_state.query_submitted = False
-                st.rerun() 
+        if "messages" not in st.session_state:
+            st.session_state.messages = [
+                {"role": "user", "content": "Hello"},
+                {"role": "assistant", "content": "Hi there! How can I assist you today?"}
+        ]
+      
+        with st.sidebar:
+            st.header("Configuration")
+            st.divider()
+            st.selectbox(
+            "🤖 Selectionner un Model", 
+            ["OpenAI", "MistralAI"],
+            key="model"
+            )
 
-        with col2:
-            if st.button("Mettre à jour le vector store"):
-                with st.spinner("Mise à jour en cours..."):
-                    self.update_vector_store_from_sharepoint()
-                st.success("Vector store mis à jour avec succès !")
+            st.selectbox(
+            "🗂️ Préciser la catégorie", 
+            ["Tout","Business", "Interne","Essentials","Propale","CV","Formation"],
+            key="category"
+            )
 
-        
+            cols0 = st.columns(2)
+            with cols0[0]:
+                use_model_knowledge = st.toggle("Utiliser les connaissances du modèle (LLM + Vector Store)", value=False)
+                # is_vector_db_loaded = ("vector_db" in st.session_state and st.session_state.vector_db is not None)
+                # st.toggle(
+                #     "Use RAG", 
+                #     value=is_vector_db_loaded, 
+                #     key="use_rag", 
+                #     disabled=not is_vector_db_loaded,
+                # )
+
+            with cols0[1]:
+                if st.button("Nouvelle conversation"):
+                    st.session_state.chat_history = []
+                    st.rerun() 
+                #st.button("Clear Chat", on_click=lambda: st.session_state.messages.clear(), type="primary")
+
+            st.header("RAG Sources:")
+            
+            # File upload input for RAG with documents
+            st.file_uploader(
+                "📄 Upload un document", 
+                type=["pdf", "pptx", "docx", "xls"],
+                accept_multiple_files=True,
+                #on_change=load_doc_to_db,
+                key="rag_docs",
+            )
+
+        # URL input for RAG with websites
+            st.text_input(
+                "🌐 Insérer une URL", 
+                placeholder="https://url.com",
+                #on_change=load_url_to_db,
+                key="rag_url",
+            )
+
 
         # Input field for user question
-        question = st.text_input("Welcome to AmitaGPT! Comment puis-je t'aider ? 😊", st.session_state.question)
+        #st.text_input("Welcome to GPT! Comment puis-je t'aider ? 😊")
 
-        use_model_knowledge = st.toggle("Utiliser les connaissances du modèle (LLM + Vector Store)", value=False)
+        #use_model_knowledge = st.toggle("Utiliser les connaissances du modèle (LLM + Vector Store)", value=False)
         
-        
-        # When the "Réponse" button is clicked
-        if st.button("Réponse"):
-            st.session_state.query_submitted = True 
 
+        if prompt := st.chat_input("Your message"):
+            st.session_state.messages.append({"role": "user", "content": prompt})
+            with st.chat_message("user"):
+                st.markdown(prompt)
 
-        if question.strip():
-            if st.session_state.query_submitted or question != "":
-                st.session_state.chat_history.append({"role": "user", "message": question})
-                # Display a progress bar
-                with st.spinner('Génération de la réponse...'):
-                    progress_bar = st.progress(0)
+            with st.chat_message("assistant"):
+                message_placeholder = st.empty()
+                full_response = ""
 
-                    # Simulate response generation process
-                    for i in range(10):
-                        time.sleep(0.1)  # Simulate time taken to generate response
-                        progress_bar.progress((i + 1) * 10)
+                messages = [HumanMessage(content=m["content"]) if m["role"] == "user" else AIMessage(content=m["content"]) for m in st.session_state.messages]
 
-                    # Generate answer using the RAG system
-                    result = self.run_rag_prompt(question=question,chat_history=st.session_state.chat_history,use_model_knowledge=use_model_knowledge)
-                    answer = result["response"]
-                    resources = result["resources"]
+                with st.spinner("Récupération de la réponse..."):
+                    # try:
+                    response_data = self.run_rag_prompt(prompt, chat_history=st.session_state.messages, use_model_knowledge=False)
+                    full_response = response_data["response"]
+                    # except Exception as e:
+                    #     logging.error(f"Erreur lors de la génération de réponse : {e}")
+                    #     full_response = "Désolé, une erreur s'est produite lors de la génération de la réponse."
+                
+                message_placeholder.markdown(full_response)
 
-                    # Add assistant's answer to chat history
-                    st.session_state.chat_history.append(
-                        {"role": "assistant", "message": answer, "resources": resources})
-                st.session_state.query_submitted = False
+                st.session_state.messages.append({"role": "assistant", "content": full_response})
 
-        # Display chat history in reverse order (latest first)
-        st.write("### Conversation :")
-        pass
-        for chat in reversed(st.session_state.chat_history):
-            if chat["role"] == "user":
-                st.markdown(f"**Vous** : {chat['message']}")
-            else:
-                st.markdown(f"**AmitaGPT** : {chat['message']}")
-                if "resources" in chat:
-                    st.markdown("**Ressources** :")
-                    for resource in chat['resources']:
-                        st.markdown(f"- {resource}")
+            # if not st.session_state.use_rag:
+            #     st.write_stream(stream_llm_response(llm_stream, messages))
+            # else:
+            #     st.write_stream(stream_llm_rag_response(llm_stream, messages))
+        # with st.chat_message("user"):
+        #     st.markdown(prompt)
+        # if question.strip():
+        #     if st.session_state.query_submitted or question != "":
+        #         st.session_state.chat_history.append({"role": "user", "message": question})
+        #         # Display a progress bar
+        #         with st.spinner('Génération de la réponse...'):
+        #             progress_bar = st.progress(0)
+
+        #             # Simulate response generation process
+        #             for i in range(10):
+        #                 time.sleep(0.1)  # Simulate time taken to generate response
+        #                 progress_bar.progress((i + 1) * 10)
+
+        #             # Generate answer using the RAG system
+        #             result = self.run_rag_prompt(question=question,chat_history=st.session_state.chat_history,use_model_knowledge=use_model_knowledge)
+        #             answer = result["response"]
+        #             resources = result["resources"]
+
+        #             # Add assistant's answer to chat history
+        #             st.session_state.chat_history.append(
+        #                 {"role": "assistant", "message": answer, "resources": resources})
+        #         st.session_state.query_submitted = False
+
+        # # Display chat history in reverse order (latest first)
+        # st.write("### Conversation :")
+        # pass
+        # for chat in reversed(st.session_state.chat_history):
+        #     if chat["role"] == "user":
+        #         st.markdown(f"**Vous** : {chat['message']}")
+        #     else:
+        #         st.markdown(f"**GPT** : {chat['message']}")
+        #         if "resources" in chat:
+        #             st.markdown("**Ressources** :")
+        #             for resource in chat['resources']:
+        #                 st.markdown(f"- {resource}")
 
 
 if __name__ == "__main__":

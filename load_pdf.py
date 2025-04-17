@@ -46,18 +46,56 @@ class LoadAndSplitDocuments:
             logging.error(f"Erreur de connexion : {e}")
             exit()
 
-    def get_files_from_sharepoint(self,extensions=[".pdf", ".pptx", ".xlsx",".docx"]):
+    # def get_files_from_sharepoint(self, extensions=[".pdf", ".pptx", ".xlsx", ".docx"], folder_url="/sites/POC_RAG/Documents%20partages"):
+    #     """Récupère les fichiers depuis SharePoint (de manière récursive)"""
+    #     all_files = []
+
+    #     def explore_folder(folder):
+    #         try:
+    #             # Charger fichiers et sous-dossiers
+    #             self.ctx.load(folder.files)
+    #             self.ctx.load(folder.folders)
+    #             self.ctx.execute_query()
+
+    #             # Parcourir les fichiers
+    #             for file in folder.files:
+    #                 if any(file.properties["Name"].endswith(ext) for ext in extensions):
+    #                     all_files.append(file)
+    #                     logging.info(file.properties["Name"])
+
+    #             # Appel récursif sur les sous-dossiers
+    #             for subfolder in folder.folders:
+    #                 explore_folder(subfolder)
+
+    #         except Exception as e:
+    #             logging.error(f"Erreur lors de l'exploration du dossier : {e}")
+
+    #     try:
+    #         root_folder = self.ctx.web.get_folder_by_server_relative_url(folder_url)
+    #         explore_folder(root_folder)
+    #     except Exception as e:
+    #         logging.error(f"Erreur lors de l'accès au dossier racine : {e}")
+
+    #     return all_files
+
+    def get_files_from_sharepoint(self,extensions=[".pdf", ".pptx", ".xlsx",".docx"],folder_url="/sites/POC_RAG/Documents%20partages"):
         """Récupère les fichiers depuis SharePoint."""
+        all_files=[]
         try:
-            folder = self.ctx.web.get_folder_by_server_relative_url(f"/sites/POC_RAG/Documents%20partages")
+            folder = self.ctx.web.get_folder_by_server_relative_url(folder_url)
             files = folder.files
             self.ctx.load(files)
             self.ctx.execute_query()
-
-            # Filtrer les fichiers selon les extensions définies
-            managed_files = [file for file in files if any(file.properties["Name"].endswith(ext) for ext in extensions)]
-            logging.info(f"{len(managed_files)} fichiers trouvés.")
-            return managed_files
+            for file in files :
+                if any(file.properties["Name"].endswith(ext) for ext in extensions):
+                    all_files.append(file)
+                    logging.info(file.properties["Name"])
+            
+            for subfolder in folder.folders:
+                print(1)
+            # managed_files = [file for file in files if any(file.properties["Name"].endswith(ext) for ext in extensions)]
+            # logging.info(f"{len(managed_files)} fichiers trouvés.")
+            return all_files
         except Exception as e:
             logging.error(f"Erreur lors de la récupération des fichiers : {e}")
             return []
@@ -186,7 +224,7 @@ class LoadAndSplitDocuments:
         return text_splitter.split_documents(documents)
 
 
-# Exemple d'utilisation
+#Exemple d'utilisation
 if __name__ == "__main__":
     load_data = LoadAndSplitDocuments()
     
@@ -195,15 +233,16 @@ if __name__ == "__main__":
 
     # Charge et extrait le contenu du premier fichier
     if files:
-        first_file = files[0]
-        documents = load_data.load_files_from_memory(first_file)
-        logging.info(f"Nombre de pages chargées : {len(documents)}")
+        print("ok")
+        # first_file = files[0]
+        # documents = load_data.load_files_from_memory(first_file)
+        # logging.info(f"Nombre de pages chargées : {len(documents)}")
     else:
         logging.warning("Aucun fichier trouvé.")
 
 
-if __name__ == '__main__':
-    load_and_split = LoadAndSplitDocuments()
-    chunks = load_and_split.run_load_and_split_documents()
+# if __name__ == '__main__':
+#     load_and_split = LoadAndSplitDocuments()
+#     chunks = load_and_split.run_load_and_split_documents()
 
 

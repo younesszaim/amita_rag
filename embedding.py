@@ -3,11 +3,11 @@ from langchain_community.vectorstores import Chroma, FAISS
 from langchain_openai import OpenAIEmbeddings
 from langchain_community.embeddings import OllamaEmbeddings
 from langchain_mistralai import MistralAIEmbeddings, ChatMistralAI
-import ollama
+#import ollama
 import chromadb
 import logging
 import time
-from load_pdf import LoadAndSplitDocuments
+from _old_load_pdf_2 import LoadAndSplitDocuments
 from tenacity import retry, stop_after_attempt, wait_exponential
 import os
 
