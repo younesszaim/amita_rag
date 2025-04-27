@@ -1,0 +1,11 @@
+
+.stSidebar{
+    background-color: #FFFFFF;
+}
+
+/* Hide default Streamlit elements if necessary
+#MainMenu {visibility: hidden;}
+footer {visibility: hidden;}
+header {visibility: hidden;}
+
+ */

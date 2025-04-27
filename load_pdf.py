@@ -12,8 +12,17 @@ logging.basicConfig(level=logging.INFO)
 load_dotenv(dotenv_path='.config')
 
 class LoadAndSplitDocuments:
-    def __init__(self):
-        self.data_path = os.getenv('DATA_PATH', './data')
+    def __init__(self, perim):
+        if perim == 'business':
+            self.data_path = os.getenv('DATA_PATH_BUSINESS', './data')
+        elif perim == 'expertise':
+            self.data_path = os.getenv('DATA_PATH_EXPERTISE', './data')
+        elif perim == 'essentiels':
+            self.data_path = os.getenv('DATA_PATH_ESSENTIELS', './data')
+        elif perim == 'interne':
+            self.data_path = os.getenv('DATA_PATH_INTERNE', './data')
+        else :
+            self.data_path = ''
 
     def run_load_and_split_documents(self):
         start_time = time.time()
